@@ -131,7 +131,7 @@ function s3dContext(canvas)
         
         load_shape: function(shape)
         {
-            if(!(shape instanceof ComplexShape))
+            if(!(shape instanceof Shape))
                 throw new TypeError('invalid type entered');
             initializeWebGL(`
             // Author: Blue
@@ -229,12 +229,26 @@ function s3dContext(canvas)
               return dot(p,n);
             }
             
+            float boxSDF( vec3 p, vec3 b )
+            {
+              vec3 q = abs(p) - b;
+              return length(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0);
+            }
+            
+            float cylinderSDF(vec3 p, float h, float r) {
+                float inOutRadius = length(p.xy) - r;
+                float inOutHeight = abs(p.z) - h/2.0;
+                float insideDistance = min(max(inOutRadius, inOutHeight), 0.0);
+                float outsideDistance = length(max(vec2(inOutRadius, inOutHeight), 0.0));
+                return insideDistance + outsideDistance;
+            }
+            
             vec4 SceneSDF(vec3 cameraPos)
             {
             
                 vec2 uMouse = (u_mouse.xy/u_resolution.xy)*2.-1.;
                 
-                return ${shape.encode(shape.tree)};
+                return ${shape.encode(shape.tree, "")};
             
             }
             vec3 findNormal(vec3 hitPoint)
@@ -255,7 +269,7 @@ function s3dContext(canvas)
                 
                 float distanceTraveled = 0.;
                 vec4 closest;
-                float shaded = 1.;
+                float res = 1.;
                 
                 for(int i=0; i<Num_Steps; i++)
                 {
@@ -268,23 +282,20 @@ function s3dContext(canvas)
                     // go past the light
                     if(distanceTraveled > Max_Distance)
                     {
-                        return 1.;
-                        //return shaded;
+                        return res/2.+.2;
                     }
                     
                     // hit object
                     if(closest.w < Min_Distance)
                     {
-                        return 0.5;
-                        //break;
+                        return 0.2;
                     }
                     
                     // move along ray
-                    distanceTraveled += max(closest.w, 0.02);
-                    
-                    shaded = min(shaded, (closest.w/distanceTraveled));
+                    res = min(res, smoothstep(Min_Distance, .2, closest.w));
+                    distanceTraveled += closest.w;
                 }
-                return 0.5;
+                return 0.2;
             }
             
             
@@ -393,10 +404,11 @@ function s3dContext(canvas)
     }
 }
 
-class BasicShape
+class Shape
 {
     constructor(type, data, color)
     {
+        if(color.length != 3) throw new SyntaxError("wrong number of arguments entered for color");
         for(var e=0; e<data.length; e++)
         {
             data[e] = (data[e]%1==0)?(data[e]+".0"):(data[e]+"");
@@ -405,87 +417,128 @@ class BasicShape
         {
             color[e] = (color[e]%1==0)?(color[e]+".0"):(color[e]+"");
         }
-        this.type = type;
-        this.data = data;
-        this.color = color;
-        this.pos = "cameraPos";
-    }
-}
-
-class ComplexShape
-{
-    constructor(obj)
-    {
-        if(!(obj instanceof BasicShape)) throw new TypeError("invalid type entered");
-        this.tree = obj;
+        this.tree = {type:type, data:data, color:color, pos:"cameraPos"};
     }
     
-    difference(obj)
+    differenceShape(obj)
     {
-        if(obj instanceof BasicShape)
-        {
-            this.tree = {type:"difference", child1:this.tree, child2:obj};
-        }else if(obj instanceof ComplexShape)
-        {
-            this.tree = {type:"difference", child1:this.tree, child2:obj.tree};
-        }else
-        {
-            throw new TypeError("invalid type entered");
-        }
+        if(!(obj instanceof Shape))  throw new TypeError("invalid type entered");
+        this.tree = {type:"difference", child1:this.tree, child2:obj.tree};
+        return this;
     }
     
-    union(obj)
+    difference(type, data, color)
     {
-        if(obj instanceof BasicShape)
+        if(color.length != 3) throw new SyntaxError("wrong number of arguments entered for color");
+        for(var e=0; e<data.length; e++)
         {
-            this.tree = {type:"union", child1:this.tree, child2:obj};
-        }else if(obj instanceof ComplexShape)
-        {
-            this.tree = {type:"union", child1:this.tree, child2:obj.tree};
-        }else
-        {
-            throw new TypeError("invalid type entered");
+            data[e] = (data[e]%1==0)?(data[e]+".0"):(data[e]+"");
         }
+        for(var e=0; e<color.length; e++)
+        {
+            color[e] = (color[e]%1==0)?(color[e]+".0"):(color[e]+"");
+        }
+        this.tree = {type:"difference", child1:this.tree, child2:{type:type, data:data, color:color, pos:"cameraPos"}};
+        return this;
+    }
+    
+    unionShape(obj)
+    {
+        if(!(obj instanceof Shape))  throw new TypeError("invalid type entered");
+        this.tree = {type:"union", child1:this.tree, child2:obj.tree};
+        return this;
+    }
+    
+    union(type, data, color)
+    {
+        if(color.length != 3) throw new SyntaxError("wrong number of arguments entered for color");
+        for(var e=0; e<data.length; e++)
+        {
+            data[e] = (data[e]%1==0)?(data[e]+".0"):(data[e]+"");
+        }
+        for(var e=0; e<color.length; e++)
+        {
+            color[e] = (color[e]%1==0)?(color[e]+".0"):(color[e]+"");
+        }
+        this.tree = {type:"union", child1:this.tree, child2:{type:type, data:data, color:color, pos:"cameraPos"}};
+        return this;
+    }
+    
+    intersectShape(obj)
+    {
+        if(!(obj instanceof Shape))  throw new TypeError("invalid type entered");
+        this.tree = {type:"intersect", child1:this.tree, child2:obj.tree};
+        return this;
+    }
+    
+    intersect(type, data, color)
+    {
+        if(color.length != 3) throw new SyntaxError("wrong number of arguments entered for color");
+        for(var e=0; e<data.length; e++)
+        {
+            data[e] = (data[e]%1==0)?(data[e]+".0"):(data[e]+"");
+        }
+        for(var e=0; e<color.length; e++)
+        {
+            color[e] = (color[e]%1==0)?(color[e]+".0"):(color[e]+"");
+        }
+        this.tree = {type:"intersect", child1:this.tree, child2:{type:type, data:data, color:color, pos:"cameraPos"}};
+        return this;
     }
     
     rotate(x,y)
     {
         x = (x%1==0)?(x+".0"):(x+"");
         y = (y%1==0)?(y+".0"):(y+"");
-        this.translate(this.tree, `*rotateY(${y})*rotateX(${x})`);
+        this.tree = {type:"rotate", tree:this.tree, x:x, y:y};
+        return this;
     }
     
-    translate(node, translation)
+    move(x,y,z)
     {
+        x = (x%1==0)?(x+".0"):(x+"");
+        y = (y%1==0)?(y+".0"):(y+"");
+        z = (z%1==0)?(z+".0"):(z+"");
+        this.tree = {type:"move", tree:this.tree, x:x, y:y, z:z};
+        return this;
+    }
+    
+    encode(node, translation)
+    {
+        if(node.type == "rotate")
+        {
+            translation += `*rotateY(radians(${node.y}))*rotateX(radians(${node.x}))`;
+            return this.encode(node.tree, translation);
+        }
+        if(node.type == "move")
+        {
+            translation += `-vec3(${node.x}, ${node.y}, ${node.z})`;
+            return this.encode(node.tree, translation);
+        }
         if(node.child1 != null)
         {
-            this.translate(node.child1, translation);
-            this.translate(node.child2, translation);
+            var one = this.encode(node.child1, translation);
+            var two = this.encode(node.child2, translation);
         }else
         {
             //at a leaf
             node.pos += translation;
-        }
-    }
-    
-    encode(node)
-    {
-        if(node.child1 != null)
-        {
-            var one = this.encode(node.child1);
-            var two = this.encode(node.child2);
-        }else
-        {
-            //at a leaf
+            
             if(node.type == "sphere")
                 return `vec4(${node.color[0]}, ${node.color[1]}, ${node.color[2]}, sphereSDF(${node.pos}, ${node.data[0]}))`;
             if(node.type == "plane")
                 return `vec4(${node.color[0]}, ${node.color[1]}, ${node.color[2]}, planeSDF(${node.pos}, vec3(${node.data[0]}, ${node.data[1]}, ${node.data[2]})))`;
+            if(node.type == "box")
+                return `vec4(${node.color[0]}, ${node.color[1]}, ${node.color[2]}, boxSDF(${node.pos}, vec3(${node.data[0]}, ${node.data[1]}, ${node.data[2]})))`;
+            if(node.type == "cylinder")
+                return `vec4(${node.color[0]}, ${node.color[1]}, ${node.color[2]}, cylinderSDF(${node.pos}, ${node.data[0]}, ${node.data[1]}))`;            
         }
         //not a leaf
         if(node.type == "union")
             return `uSDF(${one}, ${two})`;
         if(node.type == "difference")
             return `dSDF(${one}, ${two})`;
+        if(node.type == "intersect")
+            return `iSDF(${one}, ${two})`;
     }
 }
