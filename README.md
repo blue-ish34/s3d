@@ -1,9 +1,8 @@
 # srm3d
+# WIP
 A Simple RayMarching 3d API for rendering simple scenes in JavaScript and HTML
 
-WIP
-
-For simple loading of a fragment shader:
+# For simple loading of a fragment shader:
 
 const canvas = document.getElementById("glCanvas");
 
@@ -19,7 +18,9 @@ or
 
 s3d.load_string("string");
 
-else, if you don't want to touch glsl, you can create a new Shape()
+# else, if you don't want to touch glsl:
+
+create a new Shape()
 
 Shape("type", [data], [color])
 
