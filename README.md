@@ -18,7 +18,7 @@ or
 
 s3d.load_string("string");
 
-# else, if you don't want to touch glsl:
+# if you don't want to touch glsl:
 
 create a new Shape()
 
