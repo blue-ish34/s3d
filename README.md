@@ -1,5 +1,5 @@
-# s3d
-A simple 3d API for rendering simple scenes in JavaScript and HTML
+# srm3d
+A Simple RayMarching 3d API for rendering simple scenes in JavaScript and HTML
 
 WIP
 
