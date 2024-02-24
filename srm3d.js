@@ -1,5 +1,8 @@
 function s3dContext(canvas)
 {
+    var UHash = {};
+    var uniforms = '';
+    
     var gl = null;
     // Vertex Shader
     var vertexShaderSource = `
@@ -38,7 +41,9 @@ function s3dContext(canvas)
     }
     
     var initializeWebGL = function(fragmentShaderSource) {
-
+        
+        
+        
         const vertexShader = compileShader(gl, vertexShaderSource, gl.VERTEX_SHADER);
         const fragmentShader = compileShader(gl, fragmentShaderSource, gl.FRAGMENT_SHADER);
     
@@ -79,7 +84,23 @@ function s3dContext(canvas)
         // Set mouse uniform
         const mouseUniformLocation = gl.getUniformLocation(shaderProgram, "u_mouse");
         gl.uniform2f(mouseUniformLocation, 0, 0); // initialize mouse position
-    
+
+        for(let p in UHash)
+        {
+            p = UHash[p];
+            for(var e=0; e<p.data.length; e++)
+            {
+                p.data[e] = (p.data[e]%1==0)?(p.data[e]+".0"):(p.data[e]+"");
+            }
+            p.location = gl.getUniformLocation(shaderProgram, p.name);
+            
+            //initalize uniforms
+            if(p.type === "float") gl.uniform1f(p.location, p.data[0]);
+            if(p.type === "vec2") gl.uniform2f(p.location, p.data[0], p.data[1]);
+            if(p.type === "vec3") gl.uniform3f(p.location, p.data[0], p.data[1], p.data[2]);
+            if(p.type === "vec4") gl.uniform4f(p.location, p.data[0], p.data[1], p.data[2], p.data[3]);
+        }
+        
         // Render loop
         let then = 0;
         function render(now) {
@@ -111,6 +132,24 @@ function s3dContext(canvas)
     // Public API Methods and Constants
     return context =
     {
+        createUniform: function(name, type, data)
+        {
+            UHash[name] = {name:name, type:type, data:data};
+        },
+        
+        setUniform: function(name, data)
+        {
+            for(var e=0; e<data.length; e++)
+            {
+                data[e] = (data[e]%1==0)?(data[e]+".0"):(data[e]+"");
+            }
+            var p = UHash[name];
+            if(p.type === "float") gl.uniform1f(p.location, data[0]);
+            if(p.type === "vec2") gl.uniform2f(p.location, data[0], data[1]);
+            if(p.type === "vec3") gl.uniform3f(p.location, data[0], data[1], data[2]);
+            if(p.type === "vec4") gl.uniform4f(p.location, data[0], data[1], data[2], data[3]);
+        },
+        
         load_url: function(url)
         {
             // Fetch fragment shader source from file
@@ -129,10 +168,15 @@ function s3dContext(canvas)
             initializeWebGL(string);
         },
         
-        load_shape: function(shape)
+        load_shape: function(obj)
         {
-            if(!(shape instanceof Shape))
+            if(!(obj instanceof Shape))
                 throw new TypeError('invalid type entered');
+            for(var p in UHash)
+            {
+                p = UHash[p];
+                uniforms += `uniform ${p.type} ${p.name};\n`
+            }
             initializeWebGL(`
             // Author: Blue
             // Title: Ray Marching SDF testing
@@ -144,6 +188,7 @@ function s3dContext(canvas)
             uniform vec2 u_resolution;
             uniform vec2 u_mouse;
             uniform float u_time;
+            ${uniforms}
             
             float rand(vec2 co){
                 return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
@@ -248,7 +293,7 @@ function s3dContext(canvas)
             
                 vec2 uMouse = (u_mouse.xy/u_resolution.xy)*2.-1.;
                 
-                return ${shape.encode(shape.tree, "")};
+                return ${obj.encode(obj.tree, "")};
             
             }
             vec3 findNormal(vec3 hitPoint)
@@ -292,7 +337,7 @@ function s3dContext(canvas)
                     }
                     
                     // move along ray
-                    res = min(res, smoothstep(Min_Distance, .2, closest.w));
+                    res = min(res, smoothstep(Min_Distance, .1, closest.w));
                     distanceTraveled += closest.w;
                 }
                 return 0.2;
